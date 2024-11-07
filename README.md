@@ -11,7 +11,7 @@ This is the official release accompanying our Findings of EMNLP 2024 paper:
 ```
 python eval.py
 --compression_model_path ttchungc/selection-p \
---target_model_path PATH_TO_LLAMA_2_7B \
+--target_model_path MODEL_PATH \
 --dataset wsc
 ```
 
