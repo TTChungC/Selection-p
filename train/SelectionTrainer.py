@@ -4,4 +4,4 @@ class SelectionTrainer(Trainer):
         loss = outputs.loss
         l1_loss = model.base_model.compute_Lloss(outputs)
         alpha = 1.0/(l1_loss+1e-8)
-        return (alpha*loss)+l1_loss, loss, l1_loss
+        return (alpha*loss)+l1_loss
