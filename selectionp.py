@@ -29,8 +29,8 @@ class SelectionP(LlamaForCausalLM):
 def load(checkpoint):
     original_log_level = logging.getLogger().getEffectiveLevel()
     logging.disable(logging.WARNING)
-    model = SelectionP.from_pretrained(checkpoint, cache_dir='./')
-    tokenizer = AutoTokenizer.from_pretrained(checkpoint, cache_dir='./')
+    model = SelectionP.from_pretrained(checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
     cached_file = try_to_load_from_cache(checkpoint, "adapter_model.safetensors")
     save_dict = load_file(cached_file)
     new_state_dict = OrderedDict()
