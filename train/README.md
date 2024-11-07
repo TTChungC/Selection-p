@@ -10,7 +10,7 @@ To train selection-p:
 python src/train_bash.py  \
     --stage pt \
     --do_train \
-    --model_name_or_path llama-2-7b-hf \
+    --model_name_or_path PATH_TO_LLAMA \ # path to llama-2-7b-hf
     --dataset redpjmv2_500M \
     --finetuning_type lora  \
     --lora_target q_proj,v_proj,k_proj,o_proj  \
