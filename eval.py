@@ -21,7 +21,8 @@ def read_args():
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--max_token_len", help='max token length for ICL demos', default=750)
     parser.add_argument("--compression_rate", default=0.1)
-    parser.add_argument("--device", default='cuda')
+    parser.add_argument("--target_device", default='cuda')
+    parser.add_argument("--compression_device", default='cpu')
     args = parser.parse_args()
     return args
 
@@ -295,8 +296,8 @@ def eval(prompt_generator, ds, model, plaintext_demonstrations_tokens, use_plain
 
 def main(args):
     model, tokenizer = selectionp.load(args.compression_model_path)
-    model = model.to(args.device)
-    target_model = AutoModelForCausalLM.from_pretrained(args.target_model_path).to(args.device)
+    model = model.to(args.compression_device)
+    target_model = AutoModelForCausalLM.from_pretrained(args.target_model_path).to(args.target_device)
     target_tokenizer = AutoTokenizer.from_pretrained(args.target_model_path)
     ds = icl_dataset_loading.get_ds(args.dataset)
     dls = getdemoNls(ds, tokenizer, args.max_token_len)
@@ -305,13 +306,13 @@ def main(args):
     # run for 4 trials with different seed and average the result
     for i in range(1,5): 
         prompt_generator = getdemo(i,dls[i],ds, tokenizer)
-        tmp = prompt_generator.plaintext_demonstrations_tokens.to('cpu')
+        tmp = prompt_generator.plaintext_demonstrations_tokens.to(args.compression_device)
         # compression
         compressed_plaintext_demonstrations_tokens, ids, p = compress_tk(model, tmp, int(tmp.shape[1]*args.compression_rate))
         txtc = tokenizer.decode(compressed_plaintext_demonstrations_tokens[0]).replace('<s>','')
         # pass to target model for inference
         compressed = target_tokenizer(txtc, return_tensors='pt').input_ids
-        result.append(eval(prompt_generator, ds, target_model, compressed, device=args.device, use_calibration=True))
+        result.append(eval(prompt_generator, ds, target_model, compressed, device=args.target_device, use_calibration=True))
     print(f"Accuracy on {args.dataset}: {sum(result)/4}")
 
 if __name__ == "__main__":
