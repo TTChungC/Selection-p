@@ -215,7 +215,7 @@ def compress_tk(model, tk, k):
     be1 = torch.topk(p,k)
     return (tk[0][sorted(be1.indices[0].to('cpu').tolist())].unsqueeze(0),torch.sort(be1.indices).values,p) 
 
-def eval(prompt_generator, ds, model, plaintext_demonstrations_tokens, use_plaintext_demonstrations=True, device='cuda', use_calibration=True, position_ids=None):
+def eval(args, prompt_generator, ds, model, plaintext_demonstrations_tokens, use_plaintext_demonstrations=True, device='cuda', use_calibration=True, position_ids=None):
     use_calibration = use_calibration
     device = device
     is_ac = False
@@ -247,37 +247,24 @@ def eval(prompt_generator, ds, model, plaintext_demonstrations_tokens, use_plain
         
         conditioned_nlls = []
         # iterate over all candidate answer options
-        batch_size = 8
-        for option_idx in range(int(len(example["answer_options"])/batch_size)+1):
-            tmp = example["answered_example_options"][option_idx*batch_size:(option_idx+1)*batch_size]
-            max_length = max([l.shape[1] for l in tmp])
-            new_tmp = [torch.nn.functional.pad(t, (0, max_length-t.shape[1])) for t in tmp]
-            new_tmp = torch.cat(new_tmp, dim=0)
-            answered_example_tokens = new_tmp.to(device)
-            option_tokens = example["answer_options"][option_idx*batch_size:(option_idx+1)*batch_size]#.to(device)
-            option_length = [o.shape[1] for o in option_tokens]
+        for option_idx in range(len(example["answer_options"])):
+            answered_example_tokens = example["answered_example_options"][option_idx].to(args.target_device)
+            option_tokens = example["answer_options"][option_idx].to(device)
+            option_length = option_tokens.shape[1]
             plaintext_tokens = answered_example_tokens if plaintext_demonstrations_tokens is None else \
-                torch.cat([plaintext_demonstrations_tokens.repeat((new_tmp.shape[0],1)), answered_example_tokens], dim=1)
+                torch.cat([plaintext_demonstrations_tokens, answered_example_tokens], dim=1)
             
-            # if (not is_ac) and (plaintext_tokens.shape[-1] > 2048):
-            #     warnings.warn("Input longer than 2048 tokens. Skipping example!")
-            #     skip = True
-            #     continue
-        
+            if (not is_ac) and (plaintext_tokens.shape[-1] > 2048):
+                warnings.warn("Input longer than 2048 tokens. Skipping example!")
+                skip = True
+                continue
+
             with torch.no_grad():
-                if(position_ids!=None):
-                    conditioned_answer_logits = model.forward(plaintext_tokens, position_ids=position_ids, softprompt=softprompt, use_cache=False)["logits"][:,-option_length-1:-1,:] \
-                    if is_ac else model.forward(plaintext_tokens, position_ids=position_ids, use_cache=False)["logits"][:,-option_length-1:-1,:]
-                else:
-                    l = model.forward(plaintext_tokens, use_cache=False)["logits"] 
-                    conditioned_answer_logits = [l[i,-v:,:]for i,v in enumerate(option_length)]
-                    #conditioned_answer_logits = model.forward(plaintext_tokens, position_ids=position_ids, softprompt=softprompt, use_cache=False)["logits"][:,-option_length-1:-1,:] \
-                    #if is_ac else model.forward(plaintext_tokens, use_cache=False)["logits"][:,-option_length-1:-1,:]
-                for idx,c in enumerate(conditioned_answer_logits):
-                    c = c.unsqueeze(0)
-                    conditioned_log_softmax = torch.log_softmax(c, dim=-1)
-                    conditioned_nll = -torch.mean(conditioned_log_softmax.gather(dim=2, index=option_tokens[idx].unsqueeze(-1).to(device)))
-                    conditioned_nlls.append(conditioned_nll)
+                conditioned_answer_logits = model.forward(plaintext_tokens, softprompt=softprompt, use_cache=False)["logits"][:,-option_length-1:-1,:] \
+                    if is_ac else model.forward(plaintext_tokens, use_cache=False)["logits"][:,-option_length-1:-1,:]
+                conditioned_log_softmax = torch.log_softmax(conditioned_answer_logits, dim=-1)
+                conditioned_nll = -torch.mean(conditioned_log_softmax.gather(dim=2, index=option_tokens.unsqueeze(-1)))
+                conditioned_nlls.append(conditioned_nll)
         
         if skip: 
             skip = False # reset flag
@@ -312,7 +299,7 @@ def main(args):
         txtc = tokenizer.decode(compressed_plaintext_demonstrations_tokens[0]).replace('<s>','')
         # pass to target model for inference
         compressed = target_tokenizer(txtc, return_tensors='pt').input_ids
-        result.append(eval(prompt_generator, ds, target_model, compressed, device=args.target_device, use_calibration=True))
+        result.append(eval(args, prompt_generator, ds, target_model, compressed, device=args.target_device, use_calibration=True))
     print(f"Accuracy on {args.dataset}: {sum(result)/4}")
 
 if __name__ == "__main__":
